@@ -1,0 +1,32 @@
+body {
+    background-color: black;
+    color: white;
+}
+
+p {
+    margin: 0;
+}
+
+a {
+    text-decoration: none;
+    color: gray;
+}
+
+.main {
+    margin: 45vh auto;
+    width: 50vh;
+}
+
+.name {
+    font-size: 3.5em;
+    font-family: 'Mukta Vaani', sans-serif;
+}
+
+.name p {
+    margin-bottom: -0.5em;
+}
+
+.role {
+    font-size: 1.5em;
+    font-family: 'Roboto', sans-serif;
+}
