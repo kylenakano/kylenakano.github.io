@@ -1,20 +1,810 @@
-<html>
-  <head>
-    <title>kyleNakano.com</title>
-    <link rel="stylesheet" type="text/css" href="css/style.css">
-    <link rel="preconnect" href="https://fonts.gstatic.com">
-    <link href="https://fonts.googleapis.com/css?family=Mukta+Vaani|Roboto|Material+Icons" rel="stylesheet"> 
-  </head>
-  <body>
-    <div class="main">
-      <div class="header">
-        <div class="name"><p>Kyle Nakano</p></div>
-        <div class="role"><p>Software Engineer</p></div>
-        <div class="material-icons">
-          <a href = "mailto:k@kylenakano.com">email</a>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="en">
 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kyle Nakano | SWE</title>
+    <meta name="description" content="Kyle Nakano — software engineer.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <canvas id="scene" aria-hidden="true"></canvas>
+    <div class="noise" aria-hidden="true"></div>
+
+    <main id="ui">
+        <h1>Kyle Nakano</h1>
+        <a href="mailto:k@kylenakano.com" class="contact-btn">Say Hello</a>
+    </main>
+
+    <script>
+        (function () {
+            'use strict';
+
+            const canvas = document.getElementById('scene');
+            const ctx = canvas.getContext('2d');
+            const TAU = Math.PI * 2;
+            const HORIZON = 0.75;
+            const RISE = 6.2;
+            const SET = 19.4;
+
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+            // ?hour=3 forces a time of day, for previewing the cycle.
+            const forced = new URLSearchParams(location.search).get('hour');
+            const forcedHour = forced !== null && isFinite(parseFloat(forced))
+                ? ((parseFloat(forced) % 24) + 24) % 24
+                : null;
+
+            let width = 0, height = 0, horizonY = 0;
+            let stars = [], clouds = [], shootingStars = [];
+            let mouseX = 0, mouseY = 0, targetMouseX = 0, targetMouseY = 0;
+            let sky, sea, cloudTint, night, frame = 0;
+
+            // --- COLOUR HELPERS ---------------------------------------------------
+
+            function hexToRgb(hex) {
+                const n = parseInt(hex.slice(1), 16);
+                return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+            }
+
+            function mix(a, b, t) {
+                return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+            }
+
+            function rgb(c, a) {
+                const r = c[0] | 0, g = c[1] | 0, b = c[2] | 0;
+                return a === undefined ? 'rgb(' + r + ',' + g + ',' + b + ')' : 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+            }
+
+            function smoothstep(e0, e1, x) {
+                const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+                return t * t * (3 - 2 * t);
+            }
+
+            function hash(n) {
+                const s = Math.sin(n * 127.1) * 43758.5453;
+                return s - Math.floor(s);
+            }
+
+            // Interpolate a keyframed palette against the hour of the day.
+            function sample(keys, h) {
+                for (let i = 0; i < keys.length - 1; i++) {
+                    const k0 = keys[i], k1 = keys[i + 1];
+                    if (h >= k0.h && h <= k1.h) {
+                        const t = (h - k0.h) / (k1.h - k0.h);
+                        const out = {};
+                        for (const f in k0) if (f !== 'h') out[f] = mix(hexToRgb(k0[f]), hexToRgb(k1[f]), t);
+                        return out;
+                    }
+                }
+                const k = keys[keys.length - 1], out = {};
+                for (const f in k) if (f !== 'h') out[f] = hexToRgb(k[f]);
+                return out;
+            }
+
+            // --- PALETTES ---------------------------------------------------------
+
+            const SKY = [
+                { h: 0, top: '#070b1e', mid: '#0f1533', bot: '#1b1c3d' },
+                { h: 4.5, top: '#0a0f26', mid: '#1a1c44', bot: '#33265a' },
+                { h: 6.0, top: '#1d2352', mid: '#5b4a86', bot: '#e8916f' },
+                { h: 7.0, top: '#3a5a9c', mid: '#8d92c9', bot: '#ffc39a' },
+                { h: 9.0, top: '#2e6fc4', mid: '#7fb0e6', bot: '#cfe4fb' },
+                { h: 13.0, top: '#1f6ad1', mid: '#6fa9ef', bot: '#c9e3ff' },
+                { h: 16.5, top: '#2f6cc0', mid: '#8fb6e4', bot: '#ffd9b0' },
+                { h: 18.5, top: '#2a2f6b', mid: '#7d5c9c', bot: '#ff9a6a' },
+                { h: 19.8, top: '#1a0b2e', mid: '#514a9d', bot: '#ffb88c' },
+                { h: 21.5, top: '#0d0a24', mid: '#221c48', bot: '#4a2f55' },
+                { h: 24, top: '#070b1e', mid: '#0f1533', bot: '#1b1c3d' }
+            ];
+
+            const SEA = [
+                { h: 0, shal: '#0b1030', deep: '#050813' },
+                { h: 6.0, shal: '#241d4a', deep: '#0a0f28' },
+                { h: 7.5, shal: '#255574', deep: '#0e2b47' },
+                { h: 13.0, shal: '#215f88', deep: '#0b2d4d' },
+                { h: 17.5, shal: '#2b5372', deep: '#0e2740' },
+                { h: 18.5, shal: '#33285c', deep: '#101a3a' },
+                { h: 19.8, shal: '#1e1740', deep: '#0e0a20' },
+                { h: 21.5, shal: '#131034', deep: '#070a18' },
+                { h: 24, shal: '#0b1030', deep: '#050813' }
+            ];
+
+            // Kept white and cool-shadowed right through the day so they read as clouds
+            // rather than as more sunlight; warmth only creeps in near dawn and dusk.
+            const CLOUD = [
+                { h: 0, a: '#2a2f52', b: '#171a38' },
+                { h: 5.0, a: '#453f68', b: '#272346' },
+                { h: 6.4, a: '#ffd3bd', b: '#d99a86' },
+                { h: 7.6, a: '#ffffff', b: '#d7e6f8' },
+                { h: 12.0, a: '#ffffff', b: '#cfe0f5' },
+                { h: 16.8, a: '#ffffff', b: '#d5e2f2' },
+                { h: 18.4, a: '#ffe8d6', b: '#e8b294' },
+                { h: 19.4, a: '#ffd9c0', b: '#e79a7a' },
+                { h: 20.4, a: '#f0d2e0', b: '#b98fa8' },
+                { h: 22.0, a: '#39355e', b: '#231f44' },
+                { h: 24, a: '#2a2f52', b: '#171a38' }
+            ];
+
+            // Lance
+            const CREAM = '#fdfbfa';
+            const APRICOT = [220, 178, 130];
+
+            function currentHour() {
+                if (forcedHour !== null) return forcedHour;
+                const d = new Date();
+                return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+            }
+
+            function refreshPalette() {
+                const h = currentHour();
+                sky = sample(SKY, h);
+                sea = sample(SEA, h);
+                cloudTint = sample(CLOUD, h);
+                night = h < 12 ? 1 - smoothstep(4.8, 7.2, h) : smoothstep(17.6, 20.4, h);
+            }
+
+            // Where the sun or moon sits on its arc, 0 = rising, 1 = setting.
+            function celestial() {
+                const h = currentHour();
+                if (h >= RISE && h <= SET) return { sun: true, p: (h - RISE) / (SET - RISE) };
+                const nightLen = 24 - (SET - RISE);
+                const e = h > SET ? h - SET : h + 24 - SET;
+                return { sun: false, p: e / nightLen };
+            }
+
+            function celestialPos(c) {
+                return {
+                    x: width * (0.12 + c.p * 0.76) - mouseX * 18,
+                    y: horizonY - Math.sin(c.p * Math.PI) * (horizonY * 0.74) - mouseY * 14
+                };
+            }
+
+            // --- SETUP ------------------------------------------------------------
+
+            function resize() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                width = window.innerWidth;
+                height = window.innerHeight;
+                horizonY = Math.round(height * HORIZON);
+                canvas.width = Math.round(width * dpr);
+                canvas.height = Math.round(height * dpr);
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                initElements();
+                if (reduceMotion) draw(0);
+            }
+
+            function handleInput(clientX, clientY) {
+                targetMouseX = (clientX - width / 2) / (width / 2);
+                targetMouseY = (clientY - height / 2) / (height / 2);
+            }
+
+            window.addEventListener('resize', resize);
+            window.addEventListener('mousemove', function (e) { handleInput(e.clientX, e.clientY); });
+            window.addEventListener('touchstart', function (e) {
+                if (e.touches.length) handleInput(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: true });
+            window.addEventListener('touchmove', function (e) {
+                if (e.touches.length) handleInput(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: true });
+
+            // --- CLOUDS -----------------------------------------------------------
+
+            class Cloud {
+                constructor() { this.reset(true); }
+
+                reset(randomX) {
+                    const s = this.scale = 0.55 + Math.random() * 1.15;
+                    this.y = height * 0.08 + Math.random() * height * 0.4;
+                    this.speed = (0.10 + Math.random() * 0.10) * s;
+                    this.alpha = 0.55 + Math.random() * 0.35;
+                    this.depth = 0.4 + s * 0.5;
+                    this.puffs = [];
+
+                    // Base row: every puff's bottom lands on y = 0, giving a flat underside.
+                    const n = 4 + Math.floor(Math.random() * 3);
+                    let cx = 0, minR = Infinity;
+                    for (let i = 0; i < n; i++) {
+                        const r = (16 + Math.random() * 16) * s;
+                        if (r < minR) minR = r;
+                        this.puffs.push({ x: cx, y: -r, r: r });
+                        cx += r * 0.9;
+                    }
+                    this.baseFrom = this.puffs[0].x;
+                    this.baseTo = this.puffs[n - 1].x;
+                    this.baseR = minR;
+
+                    // Billows stacked on top.
+                    const m = 2 + Math.floor(Math.random() * 3);
+                    for (let i = 0; i < m; i++) {
+                        const r = (18 + Math.random() * 20) * s;
+                        this.puffs.push({
+                            x: this.baseFrom + Math.random() * (this.baseTo - this.baseFrom),
+                            y: -r - (6 + Math.random() * 14) * s,
+                            r: r
+                        });
+                    }
+
+                    this.w = cx + 48 * s;
+                    this.h = 96 * s;
+                    this.x = randomX ? Math.random() * (width + this.w) - this.w * 0.5 : width + this.w * 0.5;
+                }
+
+                update() {
+                    this.x -= this.speed;
+                    if (this.x + this.w < -80) this.reset(false);
+                }
+
+                draw(dx, dy) {
+                    const px = this.x - dx * (26 * this.depth);
+                    const py = this.y - dy * (10 * this.depth);
+
+                    ctx.save();
+                    ctx.globalAlpha = this.alpha;
+                    const g = ctx.createLinearGradient(0, py - this.h, 0, py + 4);
+                    g.addColorStop(0, rgb(cloudTint.a));
+                    g.addColorStop(1, rgb(cloudTint.b));
+                    ctx.fillStyle = g;
+
+                    ctx.beginPath();
+                    for (const p of this.puffs) {
+                        // moveTo before each arc, or consecutive puffs get joined by a chord.
+                        ctx.moveTo(px + p.x + p.r, py + p.y);
+                        ctx.arc(px + p.x, py + p.y, p.r, 0, TAU);
+                    }
+                    // Fills the dips between base puffs. Bounded by the base puff centres,
+                    // so it can never poke out past the silhouette.
+                    ctx.moveTo(px + this.baseFrom, py - this.baseR);
+                    ctx.lineTo(px + this.baseTo, py - this.baseR);
+                    ctx.lineTo(px + this.baseTo, py);
+                    ctx.lineTo(px + this.baseFrom, py);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            function initElements() {
+                stars = [];
+                const n = Math.min(280, Math.max(90, Math.round((width * height) / 8500)));
+                for (let i = 0; i < n; i++) {
+                    stars.push({
+                        x: Math.random() * width,
+                        y: Math.random() * horizonY * 0.98,
+                        size: Math.random() * 1.4 + 0.35,
+                        ph: Math.random() * TAU,
+                        sp: 0.6 + Math.random() * 1.6
+                    });
+                }
+                clouds = [];
+                const count = width < 700 ? 4 : 6;
+                for (let i = 0; i < count; i++) clouds.push(new Cloud());
+                shootingStars = [];
+            }
+
+            // --- SKY --------------------------------------------------------------
+
+            function drawSky() {
+                const g = ctx.createLinearGradient(0, 0, 0, horizonY);
+                g.addColorStop(0, rgb(sky.top));
+                g.addColorStop(0.45, rgb(sky.mid));
+                g.addColorStop(1, rgb(sky.bot));
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, width, horizonY + 1);
+            }
+
+            function drawStars(t) {
+                if (night <= 0.02) return;
+                ctx.save();
+                ctx.fillStyle = '#ffffff';
+                for (const s of stars) {
+                    const tw = 0.55 + 0.45 * Math.sin(t * 0.001 * s.sp + s.ph);
+                    ctx.globalAlpha = night * tw;
+                    ctx.beginPath();
+                    ctx.arc(s.x - mouseX * 14, s.y - mouseY * 14, s.size, 0, TAU);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            function drawShootingStars() {
+                if (reduceMotion) return;
+                if (night > 0.35 && Math.random() < 0.014) {
+                    shootingStars.push({
+                        x: Math.random() * width, y: 0,
+                        length: 60 + Math.random() * 80,
+                        speed: 8 + Math.random() * 6,
+                        angle: Math.PI / 4 + (Math.random() * 0.2 - 0.1),
+                        opacity: 1
+                    });
+                }
+                for (let i = shootingStars.length - 1; i >= 0; i--) {
+                    const s = shootingStars[i];
+                    s.x += Math.cos(s.angle) * s.speed;
+                    s.y += Math.sin(s.angle) * s.speed;
+                    s.opacity -= 0.02;
+                    if (s.opacity <= 0 || s.y > horizonY) { shootingStars.splice(i, 1); continue; }
+
+                    const tx = s.x - Math.cos(s.angle) * s.length;
+                    const ty = s.y - Math.sin(s.angle) * s.length;
+                    const g = ctx.createLinearGradient(s.x, s.y, tx, ty);
+                    g.addColorStop(0, 'rgba(255,255,255,' + (s.opacity * night) + ')');
+                    g.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.strokeStyle = g;
+                    ctx.lineWidth = 2;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(s.x, s.y);
+                    ctx.lineTo(tx, ty);
+                    ctx.stroke();
+                }
+            }
+
+            function bodyColour(c, pos) {
+                if (!c.sun) return [235, 240, 255];
+                // Warmer the closer it sits to the horizon.
+                const alt = 1 - Math.min(1, (horizonY - pos.y) / (horizonY * 0.74));
+                return mix([255, 246, 232], [255, 168, 108], alt * alt);
+            }
+
+            function drawCelestial(c, pos, col) {
+                const R = Math.min(width, height) * (c.sun ? 0.072 : 0.05);
+                const glowR = R * (c.sun ? 5 : 3.6);
+
+                const g = ctx.createRadialGradient(pos.x, pos.y, R * 0.55, pos.x, pos.y, glowR);
+                g.addColorStop(0, rgb(col, c.sun ? 0.5 : 0.3));
+                g.addColorStop(1, rgb(col, 0));
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, glowR, 0, TAU);
+                ctx.fill();
+
+                ctx.fillStyle = rgb(col);
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, R, 0, TAU);
+                ctx.fill();
+
+                if (!c.sun) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, R, 0, TAU);
+                    ctx.clip();
+                    ctx.fillStyle = 'rgba(150,160,190,0.22)';
+                    const craters = [[-0.32, -0.22, 0.28], [0.26, 0.12, 0.20], [-0.08, 0.38, 0.15], [0.34, -0.36, 0.12]];
+                    for (const cr of craters) {
+                        ctx.beginPath();
+                        ctx.arc(pos.x + cr[0] * R, pos.y + cr[1] * R, cr[2] * R, 0, TAU);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+            }
+
+            // --- OCEAN ------------------------------------------------------------
+
+            function drawOcean() {
+                const g = ctx.createLinearGradient(0, horizonY, 0, height);
+                g.addColorStop(0, rgb(sea.shal));
+                g.addColorStop(1, rgb(sea.deep));
+                ctx.fillStyle = g;
+                ctx.fillRect(0, horizonY, width, height - horizonY);
+            }
+
+            // Sun/moon glitter: a column of shimmering ellipses that widens toward the
+            // viewer and is brightest when the light source sits low on the horizon.
+            function drawGlitter(t, pos, col) {
+                const alt = 1 - Math.min(1, Math.max(0, (horizonY - pos.y) / (horizonY * 0.74)));
+                const intensity = 0.35 + 0.65 * alt;
+                if (intensity <= 0.01) return;
+
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.fillStyle = rgb(col);
+
+                // Bright core right at the waterline.
+                const core = ctx.createRadialGradient(pos.x, horizonY, 0, pos.x, horizonY, width * 0.14);
+                core.addColorStop(0, rgb(col, 0.32 * intensity));
+                core.addColorStop(1, rgb(col, 0));
+                ctx.fillStyle = core;
+                ctx.fillRect(pos.x - width * 0.16, horizonY - 4, width * 0.32, height - horizonY);
+                ctx.fillStyle = rgb(col);
+
+                const step = 5;
+                for (let y = horizonY + 2; y < height; y += step) {
+                    const d = (y - horizonY) / (height - horizonY);
+                    const shimmer = 0.55 + 0.45 * Math.sin(t * 0.0016 + y * 0.09);
+                    const w = (10 + d * width * 0.16) * shimmer;
+                    const a = intensity * (1 - d) * (1 - d) * 0.55;
+                    if (a <= 0.003) continue;
+                    ctx.globalAlpha = a;
+                    ctx.beginPath();
+                    ctx.ellipse(
+                        pos.x + Math.sin(t * 0.0011 + y * 0.05) * (6 + d * 24),
+                        y,
+                        Math.max(w, 2),
+                        1.1 + d * 1.6,
+                        0, 0, TAU
+                    );
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            function drawWaves(t) {
+                ctx.save();
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = rgb(mix(sea.shal, [255, 255, 255], 0.5));
+                const rows = 22;
+                for (let i = 0; i < rows; i++) {
+                    const d = Math.pow(i / rows, 1.6);
+                    const y = horizonY + d * (height - horizonY) + 2;
+                    const segs = 3 + Math.floor(hash(i) * 3);
+                    ctx.lineWidth = 1 + d * 1.6;
+                    ctx.globalAlpha = 0.15 * (1 - d * 0.7);
+                    for (let j = 0; j < segs; j++) {
+                        const drift = (t * 0.012 * (0.4 + d)) % (width + 300);
+                        const x = ((hash(i * 7 + j * 3.3) * (width + 300)) + drift) % (width + 300) - 150;
+                        const len = (28 + hash(i * 3 + j) * 90) * (0.5 + d);
+                        ctx.beginPath();
+                        ctx.moveTo(x, y);
+                        ctx.lineTo(x + len, y);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+
+            function drawScrim() {
+                const g = ctx.createLinearGradient(0, horizonY, 0, height);
+                g.addColorStop(0, 'rgba(0,0,0,0)');
+                g.addColorStop(0.35, 'rgba(0,0,0,0.28)');
+                g.addColorStop(1, 'rgba(0,0,0,0.45)');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, horizonY, width, height - horizonY);
+            }
+
+            // --- LANCE ------------------------------------------------------------
+
+            function lanceBodyPath(x, y, S, breath) {
+                ctx.beginPath();
+                // Flanks rise into a ruff flare at the shoulders, then draw in to a
+                // thick neck — one continuous outline, so nothing reads as a collar.
+                ctx.moveTo(x - 50 * S, y);
+                ctx.bezierCurveTo(x - 57 * S, y - 48 * S, x - 46 * S, y - 96 * S, x - 38 * S, y - 118 * S);
+                ctx.quadraticCurveTo(x - 34 * S, y - 134 * S, x - 20 * S, y - 140 * S + breath);
+                ctx.quadraticCurveTo(x, y - 146 * S + breath, x + 20 * S, y - 140 * S + breath);
+                ctx.quadraticCurveTo(x + 34 * S, y - 134 * S, x + 38 * S, y - 118 * S);
+                ctx.bezierCurveTo(x + 46 * S, y - 96 * S, x + 57 * S, y - 48 * S, x + 50 * S, y);
+                ctx.quadraticCurveTo(x, y + 13 * S, x - 50 * S, y);
+                ctx.closePath();
+            }
+
+            // --- CURVE HELPERS ----------------------------------------------------
+
+            function bez(p0, p1, p2, p3, u) {
+                const m = 1 - u;
+                return [
+                    m * m * m * p0[0] + 3 * m * m * u * p1[0] + 3 * m * u * u * p2[0] + u * u * u * p3[0],
+                    m * m * m * p0[1] + 3 * m * m * u * p1[1] + 3 * m * u * u * p2[1] + u * u * u * p3[1]
+                ];
+            }
+
+            function bezTangent(p0, p1, p2, p3, u) {
+                const m = 1 - u;
+                return [
+                    3 * m * m * (p1[0] - p0[0]) + 6 * m * u * (p2[0] - p1[0]) + 3 * u * u * (p3[0] - p2[0]),
+                    3 * m * m * (p1[1] - p0[1]) + 6 * m * u * (p2[1] - p1[1]) + 3 * u * u * (p3[1] - p2[1])
+                ];
+            }
+
+            // Relaxed sitting tail: thick at the base, fanning out along the ground and
+            // hooking up at the tip. Built as a tapered ribbon swept along a bezier spine.
+            function drawTail(x, y, S, t) {
+                const sway = reduceMotion ? 0 : Math.sin(t * 0.0013) * 3 * S;
+                const p0 = [x + 8 * S, y - 18 * S];
+                const p1 = [x + 2 * S, y + 24 * S + sway];
+                const p2 = [x - 64 * S, y + 34 * S + sway];
+                const p3 = [x - 84 * S, y - 10 * S - sway];
+
+                const N = 44;
+                const spine = [], norm = [], halfW = [];
+                for (let i = 0; i <= N; i++) {
+                    // Stop just short of the spine's end. The last few percent taper to
+                    // near-zero area, where the fill disappears but the stroke survives
+                    // as a hairline trailing off across the rock.
+                    const u = (i / N) * 0.92;
+                    const p = bez(p0, p1, p2, p3, u);
+                    const d = bezTangent(p0, p1, p2, p3, u);
+                    const len = Math.hypot(d[0], d[1]) || 1;
+                    spine.push(p);
+                    norm.push([-d[1] / len, d[0] / len]);
+                    // Narrow where it leaves the body, thick through the middle,
+                    // tapering to a point at the tip.
+                    halfW.push((3 + 22 * Math.sin(Math.PI * Math.pow(u, 1.35))) * S * (1 - 0.7 * u * u));
+                }
+
+                function ribbon(inner, outer) {
+                    ctx.beginPath();
+                    for (let i = 0; i <= N; i++) {
+                        const px = spine[i][0] + norm[i][0] * halfW[i] * outer;
+                        const py = spine[i][1] + norm[i][1] * halfW[i] * outer;
+                        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                    }
+                    for (let i = N; i >= 0; i--) {
+                        ctx.lineTo(
+                            spine[i][0] + norm[i][0] * halfW[i] * inner,
+                            spine[i][1] + norm[i][1] * halfW[i] * inner
+                        );
+                    }
+                    ctx.closePath();
+                }
+
+                // Fill, then stroke the same path with round joins so the silhouette
+                // reads soft rather than cut from paper.
+                ctx.fillStyle = CREAM;
+                ctx.strokeStyle = CREAM;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 3 * S;
+                ribbon(-1, 1);
+                ctx.fill();
+                ctx.stroke();
+
+                // Apricot along the upper edge only, soft.
+                ctx.fillStyle = rgb(APRICOT, 0.42);
+                ribbon(0.15, 1);
+                ctx.fill();
+            }
+
+            // Small rock the dog is actually sitting on, meeting the water with a
+            // contact highlight and a smeared reflection.
+            function drawIslet(x, topY, S, lightPos, lightCol) {
+                const waterLine = topY + 66 * S;
+
+                // Reflection first, so the rock sits on top of it.
+                const rg = ctx.createLinearGradient(0, waterLine, 0, waterLine + 48 * S);
+                rg.addColorStop(0, 'rgba(0,0,0,0.34)');
+                rg.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = rg;
+                ctx.beginPath();
+                ctx.ellipse(x + 4 * S, waterLine + 18 * S, 64 * S, 26 * S, 0, 0, TAU);
+                ctx.fill();
+
+                ctx.fillStyle = rgb(mix(sea.deep, [0, 0, 0], 0.5));
+                ctx.beginPath();
+                ctx.moveTo(x - 92 * S, topY + 8 * S);
+                ctx.quadraticCurveTo(x - 66 * S, topY - 5 * S, x - 26 * S, topY - 1 * S);
+                ctx.quadraticCurveTo(x + 24 * S, topY - 7 * S, x + 74 * S, topY + 3 * S);
+                ctx.quadraticCurveTo(x + 98 * S, topY + 10 * S, x + 84 * S, topY + 34 * S);
+                ctx.quadraticCurveTo(x + 54 * S, waterLine, x + 4 * S, waterLine);
+                ctx.quadraticCurveTo(x - 52 * S, waterLine, x - 78 * S, topY + 34 * S);
+                ctx.closePath();
+                ctx.fill();
+
+                // Lit edge.
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                const dir = lightPos.x < x ? -1 : 1;
+                const lg = ctx.createLinearGradient(x - 92 * S, 0, x + 92 * S, 0);
+                const st = 0.16 + 0.3 * (1 - night);
+                lg.addColorStop(dir > 0 ? 0 : 1, rgb(lightCol, 0));
+                lg.addColorStop(dir > 0 ? 1 : 0, rgb(lightCol, st));
+                ctx.strokeStyle = lg;
+                ctx.lineWidth = 2.4 * S;
+                ctx.beginPath();
+                ctx.moveTo(x - 92 * S, topY + 8 * S);
+                ctx.quadraticCurveTo(x - 66 * S, topY - 5 * S, x - 26 * S, topY - 1 * S);
+                ctx.quadraticCurveTo(x + 24 * S, topY - 7 * S, x + 74 * S, topY + 3 * S);
+                ctx.quadraticCurveTo(x + 98 * S, topY + 10 * S, x + 84 * S, topY + 34 * S);
+                ctx.stroke();
+                ctx.restore();
+
+                // Waterline contact.
+                ctx.save();
+                ctx.globalAlpha = 0.45;
+                ctx.fillStyle = rgb(mix(sea.shal, [255, 255, 255], 0.3));
+                ctx.beginPath();
+                ctx.ellipse(x + 4 * S, waterLine, 72 * S, 4.5 * S, 0, 0, TAU);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Broad, flat-topped skull with near-vertical sides — a shiba's head reads
+            // as a cylinder from behind, not a ball.
+            function headPath(x, headY, S) {
+                const cx = x + 2 * S;
+                const w = 28 * S;
+                ctx.beginPath();
+                ctx.moveTo(cx - w, headY + 11 * S);
+                ctx.lineTo(cx - w, headY - 10 * S);
+                ctx.quadraticCurveTo(cx - w, headY - 26 * S, cx - w + 16 * S, headY - 26 * S);
+                ctx.lineTo(cx + w - 16 * S, headY - 26 * S);
+                ctx.quadraticCurveTo(cx + w, headY - 26 * S, cx + w, headY - 10 * S);
+                ctx.lineTo(cx + w, headY + 11 * S);
+                ctx.quadraticCurveTo(cx + w, headY + 21 * S, cx + w - 10 * S, headY + 21 * S);
+                ctx.lineTo(cx - w + 10 * S, headY + 21 * S);
+                ctx.quadraticCurveTo(cx - w, headY + 21 * S, cx - w, headY + 11 * S);
+                ctx.closePath();
+            }
+
+            // Small, thick, triangular, set well apart, tilting forward (AKC standard).
+            function drawEar(x, headY, S, sign) {
+                const innerX = x + sign * 10 * S;
+                const outerX = x + sign * 30 * S;
+                const tipX = x + sign * 25 * S;
+                const tipY = headY - 48 * S;
+
+                // Brown at the tip washing out to white at the base.
+                const earGrad = ctx.createLinearGradient(0, tipY, 0, headY - 12 * S);
+                earGrad.addColorStop(0, rgb(APRICOT));
+                earGrad.addColorStop(0.5, rgb(mix(APRICOT, [253, 251, 250], 0.4)));
+                earGrad.addColorStop(1, CREAM);
+                ctx.fillStyle = earGrad;
+                ctx.beginPath();
+                ctx.moveTo(innerX, headY - 22 * S);
+                ctx.quadraticCurveTo(x + sign * 15 * S, headY - 40 * S, tipX, tipY);
+                ctx.quadraticCurveTo(x + sign * 32 * S, headY - 36 * S, outerX, headY - 16 * S);
+                ctx.quadraticCurveTo(x + sign * 20 * S, headY - 12 * S, innerX, headY - 22 * S);
+                ctx.closePath();
+                ctx.fill();
+
+                // Fur fringe along the base.
+                ctx.fillStyle = CREAM;
+                ctx.beginPath();
+                ctx.ellipse(x + sign * 20 * S, headY - 16 * S, 9 * S, 5 * S, sign * 0.3, 0, TAU);
+                ctx.fill();
+            }
+
+            function drawLance(t, lightPos, lightCol) {
+                const S = Math.max(0.55, Math.min(1.1, Math.min(width, height) / 900));
+                const x = (width > 768 ? width * 0.76 : width * 0.68) - mouseX * 36;
+                const topY = height - 104 * S - mouseY * 10;
+                const y = topY - 2 * S;
+                const breath = reduceMotion ? 0 : Math.sin(t * 0.0022) * 2 * S;
+                const headY = y - 156 * S + breath;
+
+                drawIslet(x, topY, S, lightPos, lightCol);
+
+                // Contact shadow.
+                ctx.fillStyle = 'rgba(0,0,0,0.38)';
+                ctx.beginPath();
+                ctx.ellipse(x, y + 8 * S, 62 * S, 12 * S, 0, 0, TAU);
+                ctx.fill();
+
+                // Body.
+                ctx.fillStyle = CREAM;
+                lanceBodyPath(x, y, S, breath);
+                ctx.fill();
+
+                // Apricot back, soft-edged so there is no hard saddle line.
+                const sad = ctx.createLinearGradient(0, y - 140 * S, 0, y - 6 * S);
+                sad.addColorStop(0, rgb(APRICOT, 0.55));
+                sad.addColorStop(0.5, rgb(APRICOT, 0.5));
+                sad.addColorStop(1, rgb(APRICOT, 0.08));
+                ctx.fillStyle = sad;
+                ctx.beginPath();
+                ctx.moveTo(x - 15 * S, y - 130 * S + breath);
+                ctx.bezierCurveTo(x - 28 * S, y - 84 * S, x - 34 * S, y - 30 * S, x, y - 12 * S);
+                ctx.bezierCurveTo(x + 34 * S, y - 30 * S, x + 28 * S, y - 84 * S, x + 15 * S, y - 126 * S + breath);
+                ctx.closePath();
+                ctx.fill();
+
+                // Hind paw peeking out on the right.
+                ctx.fillStyle = CREAM;
+                ctx.beginPath();
+                ctx.ellipse(x + 46 * S, y + 2 * S, 15 * S, 9 * S, -0.12, 0, TAU);
+                ctx.fill();
+
+                drawTail(x, y, S, t);
+
+                // Contact shading under the head. Radial, not an ellipse — a hard-edged
+                // shape here is exactly what made it look like a ring.
+                const hs = ctx.createRadialGradient(x + 2 * S, headY + 19 * S, 2 * S, x + 2 * S, headY + 19 * S, 27 * S);
+                hs.addColorStop(0, 'rgba(0,0,0,0.13)');
+                hs.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = hs;
+                ctx.beginPath();
+                ctx.ellipse(x + 2 * S, headY + 19 * S, 27 * S, 16 * S, 0, 0, TAU);
+                ctx.fill();
+
+                drawEar(x, headY, S, -1);
+                drawEar(x, headY, S, 1);
+
+                // Cheek floof, skull, and a hint of muzzle turned to the right.
+                ctx.fillStyle = CREAM;
+                ctx.beginPath();
+                ctx.ellipse(x - 16 * S, headY + 9 * S, 11 * S, 10 * S, 0, 0, TAU);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(x + 19 * S, headY + 9 * S, 11 * S, 10 * S, 0, 0, TAU);
+                ctx.fill();
+                headPath(x, headY, S);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(x + 27 * S, headY + 3 * S, 10 * S, 7 * S, 0.18, 0, TAU);
+                ctx.fill();
+
+                // Rim light from whichever body is in the sky. Clipped gradient rather
+                // than a stroke — stroking a closed path also draws its buried edges,
+                // which showed up as a line lying across the neck and flank.
+                const dir = lightPos.x < x ? -1 : 1;
+                const strength = 0.22 + 0.5 * (1 - night);
+
+                function rimLight(pathFn, cx, span) {
+                    ctx.save();
+                    pathFn();
+                    ctx.clip();
+                    ctx.globalCompositeOperation = 'lighter';
+                    const g = ctx.createLinearGradient(cx - span, 0, cx + span, 0);
+                    if (dir > 0) {
+                        g.addColorStop(0, rgb(lightCol, 0));
+                        g.addColorStop(0.62, rgb(lightCol, 0));
+                        g.addColorStop(1, rgb(lightCol, strength));
+                    } else {
+                        g.addColorStop(0, rgb(lightCol, strength));
+                        g.addColorStop(0.38, rgb(lightCol, 0));
+                        g.addColorStop(1, rgb(lightCol, 0));
+                    }
+                    ctx.fillStyle = g;
+                    ctx.fillRect(cx - span, 0, span * 2, height);
+                    ctx.restore();
+                }
+
+                rimLight(function () { lanceBodyPath(x, y, S, breath); }, x, 58 * S);
+                rimLight(function () { headPath(x, headY, S); }, x + 2 * S, 30 * S);
+            }
+
+            // --- MAIN LOOP --------------------------------------------------------
+
+            function draw(t) {
+                if (frame % 30 === 0) refreshPalette();
+
+                mouseX += (targetMouseX - mouseX) * 0.08;
+                mouseY += (targetMouseY - mouseY) * 0.08;
+
+                const c = celestial();
+                const pos = celestialPos(c);
+                const col = bodyColour(c, pos);
+
+                ctx.clearRect(0, 0, width, height);
+
+                drawSky();
+                drawStars(t);
+                drawShootingStars();
+                drawCelestial(c, pos, col);
+
+                for (const cloud of clouds) {
+                    if (!reduceMotion) cloud.update();
+                    cloud.draw(mouseX, mouseY);
+                }
+
+                drawOcean();
+                drawGlitter(t, pos, col);
+                drawWaves(t);
+                drawScrim();
+                drawLance(t, pos, col);
+            }
+
+            function animate(t) {
+                frame++;
+                draw(t);
+                requestAnimationFrame(animate);
+            }
+
+            refreshPalette();
+            resize();
+            if (reduceMotion) draw(0);
+            else requestAnimationFrame(animate);
+        })();
+    </script>
+</body>
+
+</html>
