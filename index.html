@@ -4,8 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Kyle Nakano | SWE</title>
-    <meta name="description" content="Kyle Nakano — software engineer.">
+    <title>Kyle Nakano</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -664,8 +665,11 @@
             }
 
             function drawLance(t, lightPos, lightCol) {
-                const S = Math.max(0.55, Math.min(1.1, Math.min(width, height) / 900));
-                const x = (width > 768 ? width * 0.76 : width * 0.68) - mouseX * 36;
+                // On phones the scale clamps to its floor and he ends up too small
+                // for the frame, so give him a boost there.
+                const narrow = width <= 768;
+                const S = Math.max(0.55, Math.min(1.1, Math.min(width, height) / 900)) * (narrow ? 1.3 : 1);
+                const x = (narrow ? width * 0.68 : width * 0.76) - mouseX * 36;
                 const topY = height - 104 * S - mouseY * 10;
                 const y = topY - 2 * S;
                 const breath = reduceMotion ? 0 : Math.sin(t * 0.0022) * 2 * S;
