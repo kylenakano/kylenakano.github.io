@@ -20,7 +20,7 @@
 
     <main id="ui">
         <h1>Kyle Nakano</h1>
-        <a href="mailto:k@kylenakano.com" class="contact-btn">Say Hello</a>
+        <a href="mailto:k@kylenakano.com" class="contact" aria-label="Email Kyle" title="k@kylenakano.com">✉️</a>
     </main>
 
     <script>
@@ -474,16 +474,18 @@
 
             // --- LANCE ------------------------------------------------------------
 
-            function lanceBodyPath(x, y, S, breath) {
+            // V stretches him vertically without widening him — a sitting shiba is
+            // taller than he is square, and squat proportions read as stumpy.
+            function lanceBodyPath(x, y, S, breath, V) {
                 ctx.beginPath();
                 // Flanks rise into a ruff flare at the shoulders, then draw in to a
                 // thick neck — one continuous outline, so nothing reads as a collar.
                 ctx.moveTo(x - 50 * S, y);
-                ctx.bezierCurveTo(x - 57 * S, y - 48 * S, x - 46 * S, y - 96 * S, x - 38 * S, y - 118 * S);
-                ctx.quadraticCurveTo(x - 34 * S, y - 134 * S, x - 20 * S, y - 140 * S + breath);
-                ctx.quadraticCurveTo(x, y - 146 * S + breath, x + 20 * S, y - 140 * S + breath);
-                ctx.quadraticCurveTo(x + 34 * S, y - 134 * S, x + 38 * S, y - 118 * S);
-                ctx.bezierCurveTo(x + 46 * S, y - 96 * S, x + 57 * S, y - 48 * S, x + 50 * S, y);
+                ctx.bezierCurveTo(x - 57 * S, y - 48 * S * V, x - 46 * S, y - 96 * S * V, x - 38 * S, y - 118 * S * V);
+                ctx.quadraticCurveTo(x - 34 * S, y - 134 * S * V, x - 20 * S, y - 140 * S * V + breath);
+                ctx.quadraticCurveTo(x, y - 146 * S * V + breath, x + 20 * S, y - 140 * S * V + breath);
+                ctx.quadraticCurveTo(x + 34 * S, y - 134 * S * V, x + 38 * S, y - 118 * S * V);
+                ctx.bezierCurveTo(x + 46 * S, y - 96 * S * V, x + 57 * S, y - 48 * S * V, x + 50 * S, y);
                 ctx.quadraticCurveTo(x, y + 13 * S, x - 50 * S, y);
                 ctx.closePath();
             }
@@ -565,21 +567,13 @@
                 ctx.fill();
             }
 
-            // Small rock the dog is actually sitting on, meeting the water with a
-            // contact highlight and a smeared reflection.
-            function drawIslet(x, topY, S, lightPos, lightCol) {
+            // Stone tones of its own rather than a darkened sample of the sea —
+            // derived from the water, the rock vanished into it after dusk.
+            const ROCK_DAY = [96, 88, 99];
+            const ROCK_NIGHT = [44, 42, 66];
+
+            function rockPath(x, topY, S) {
                 const waterLine = topY + 66 * S;
-
-                // Reflection first, so the rock sits on top of it.
-                const rg = ctx.createLinearGradient(0, waterLine, 0, waterLine + 48 * S);
-                rg.addColorStop(0, 'rgba(0,0,0,0.34)');
-                rg.addColorStop(1, 'rgba(0,0,0,0)');
-                ctx.fillStyle = rg;
-                ctx.beginPath();
-                ctx.ellipse(x + 4 * S, waterLine + 18 * S, 64 * S, 26 * S, 0, 0, TAU);
-                ctx.fill();
-
-                ctx.fillStyle = rgb(mix(sea.deep, [0, 0, 0], 0.5));
                 ctx.beginPath();
                 ctx.moveTo(x - 92 * S, topY + 8 * S);
                 ctx.quadraticCurveTo(x - 66 * S, topY - 5 * S, x - 26 * S, topY - 1 * S);
@@ -588,6 +582,80 @@
                 ctx.quadraticCurveTo(x + 54 * S, waterLine, x + 4 * S, waterLine);
                 ctx.quadraticCurveTo(x - 52 * S, waterLine, x - 78 * S, topY + 34 * S);
                 ctx.closePath();
+            }
+
+            // The top edge alone, for the lit rim.
+            function rockCrest(x, topY, S) {
+                ctx.beginPath();
+                ctx.moveTo(x - 92 * S, topY + 8 * S);
+                ctx.quadraticCurveTo(x - 66 * S, topY - 5 * S, x - 26 * S, topY - 1 * S);
+                ctx.quadraticCurveTo(x + 24 * S, topY - 7 * S, x + 74 * S, topY + 3 * S);
+                ctx.quadraticCurveTo(x + 98 * S, topY + 10 * S, x + 84 * S, topY + 34 * S);
+            }
+
+            // Small rock the dog is actually sitting on, meeting the water with a
+            // contact highlight and a banded reflection.
+            function drawIslet(x, topY, S, lightPos, lightCol, t) {
+                const waterLine = topY + 66 * S;
+                const rock = mix(ROCK_DAY, ROCK_NIGHT, night);
+
+                // Shadow the rock casts into the water it displaces, under everything.
+                const sg = ctx.createLinearGradient(0, waterLine, 0, waterLine + 42 * S);
+                sg.addColorStop(0, 'rgba(0,0,0,0.4)');
+                sg.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = sg;
+                ctx.beginPath();
+                ctx.ellipse(x + 4 * S, waterLine + 13 * S, 72 * S, 21 * S, 0, 0, TAU);
+                ctx.fill();
+
+                // Reflection: the silhouette mirrored and squashed, then sliced into
+                // horizontal bands that slide against each other. Rigid mirroring looks
+                // like glass; offsetting each band is what sells it as moving water.
+                const refCol = mix(rock, sea.deep, 0.28);
+                const bands = 14, reach = 46 * S, bandH = reach / bands;
+                for (let i = 0; i < bands; i++) {
+                    const d = i / bands;
+                    const a = (1 - d) * (1 - d) * 0.62;
+                    if (a < 0.012) continue;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(x - 130 * S, waterLine + i * bandH, 260 * S, bandH + 0.6);
+                    ctx.clip();
+                    ctx.globalAlpha = a;
+                    // Maps y to waterLine - 0.6 * (y - waterLine): flipped and foreshortened.
+                    const wob = reduceMotion ? 0 : Math.sin(t * 0.0017 + i * 0.85) * (1.2 + d * 8) * S;
+                    ctx.translate(wob, waterLine);
+                    ctx.scale(1, -0.6);
+                    ctx.translate(0, -waterLine);
+                    ctx.fillStyle = rgb(refCol);
+                    rockPath(x, topY, S);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // A few brighter chips of the lit crest scattered on the surface.
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                for (let i = 0; i < 5; i++) {
+                    const d = (i + 0.5) / 5;
+                    const a = 0.12 * (1 - d) * (1 - night * 0.55);
+                    ctx.globalAlpha = a;
+                    ctx.fillStyle = rgb(mix(rock, lightCol, 0.5));
+                    const sw = reduceMotion ? 0 : Math.sin(t * 0.0021 + i * 1.7) * 10 * S;
+                    ctx.beginPath();
+                    ctx.ellipse(x + sw + (i - 2) * 16 * S, waterLine + d * 34 * S, (26 - i * 3) * S, 1.6 * S, 0, 0, TAU);
+                    ctx.fill();
+                }
+                ctx.restore();
+
+                // Body: lit crown falling to a dark base, so it reads as volume rather
+                // than a flat cutout.
+                const bg = ctx.createLinearGradient(0, topY - 8 * S, 0, waterLine);
+                bg.addColorStop(0, rgb(mix(rock, lightCol, 0.12 + 0.18 * (1 - night))));
+                bg.addColorStop(0.55, rgb(rock));
+                bg.addColorStop(1, rgb(mix(rock, [0, 0, 0], 0.55)));
+                ctx.fillStyle = bg;
+                rockPath(x, topY, S);
                 ctx.fill();
 
                 // Lit edge.
@@ -595,23 +663,19 @@
                 ctx.globalCompositeOperation = 'lighter';
                 const dir = lightPos.x < x ? -1 : 1;
                 const lg = ctx.createLinearGradient(x - 92 * S, 0, x + 92 * S, 0);
-                const st = 0.16 + 0.3 * (1 - night);
+                const st = 0.22 + 0.34 * (1 - night);
                 lg.addColorStop(dir > 0 ? 0 : 1, rgb(lightCol, 0));
                 lg.addColorStop(dir > 0 ? 1 : 0, rgb(lightCol, st));
                 ctx.strokeStyle = lg;
                 ctx.lineWidth = 2.4 * S;
-                ctx.beginPath();
-                ctx.moveTo(x - 92 * S, topY + 8 * S);
-                ctx.quadraticCurveTo(x - 66 * S, topY - 5 * S, x - 26 * S, topY - 1 * S);
-                ctx.quadraticCurveTo(x + 24 * S, topY - 7 * S, x + 74 * S, topY + 3 * S);
-                ctx.quadraticCurveTo(x + 98 * S, topY + 10 * S, x + 84 * S, topY + 34 * S);
+                rockCrest(x, topY, S);
                 ctx.stroke();
                 ctx.restore();
 
                 // Waterline contact.
                 ctx.save();
-                ctx.globalAlpha = 0.45;
-                ctx.fillStyle = rgb(mix(sea.shal, [255, 255, 255], 0.3));
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = rgb(mix(sea.shal, [255, 255, 255], 0.35));
                 ctx.beginPath();
                 ctx.ellipse(x + 4 * S, waterLine, 72 * S, 4.5 * S, 0, 0, TAU);
                 ctx.fill();
@@ -664,18 +728,77 @@
                 ctx.fill();
             }
 
+            // He keeps his back to us, so this is never a profile — only the blunt end of
+            // the snout clears the cheek, on whichever side the light is. peek widens that
+            // sliver; most of the length stays buried behind the skull.
+            function drawMuzzle(hx, headY, S, peek, theta, lightCol) {
+                const L = (14 + 6 * peek) * S;
+                const W = (10.8 + 1.2 * peek) * S;
+                // Rooted almost at the skull's edge (half-width 28S), so only the last
+                // few S of it ever show.
+                const R = (18 + 6 * peek) * S;
+
+                ctx.save();
+                ctx.translate(hx + Math.cos(theta) * R, headY + 4 * S + Math.sin(theta) * R * 0.75);
+                ctx.rotate(theta);
+                // Past vertical the rotation has flipped the local y axis, which would
+                // hang the bridge underneath and put the jaw on top.
+                if (Math.cos(theta) < 0) ctx.scale(1, -1);
+
+                // Blunt block rather than a wedge — at this length a taper reads as a beak.
+                ctx.fillStyle = CREAM;
+                ctx.beginPath();
+                ctx.moveTo(-5 * S, -W);
+                ctx.lineTo(L - 4 * S, -W * 0.94);
+                ctx.quadraticCurveTo(L + 2 * S, 0, L - 4 * S, W * 0.94);
+                ctx.lineTo(-5 * S, W);
+                ctx.closePath();
+                ctx.fill();
+                // One shadow for the silhouette; the overlays below would stack theirs.
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+
+                // Apricot down the bridge, cream underneath — a shiba's muzzle is never
+                // one flat colour.
+                const mg = ctx.createLinearGradient(0, -W, 0, W);
+                mg.addColorStop(0, rgb(APRICOT, 0.5));
+                mg.addColorStop(0.55, rgb(APRICOT, 0.12));
+                mg.addColorStop(1, rgb(APRICOT, 0));
+                ctx.fillStyle = mg;
+                ctx.fill();
+
+                // Lit along its length, because it is pointed straight at the light.
+                const lit = ctx.createLinearGradient(0, 0, L, 0);
+                lit.addColorStop(0, rgb(lightCol, 0));
+                lit.addColorStop(1, rgb(lightCol, 0.16 + 0.3 * (1 - night)));
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.fillStyle = lit;
+                ctx.fill();
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.restore();
+            }
+
             function drawLance(t, lightPos, lightCol) {
                 // On phones the scale clamps to its floor and he ends up too small
                 // for the frame, so give him a boost there.
                 const narrow = width <= 768;
                 const S = Math.max(0.55, Math.min(1.1, Math.min(width, height) / 900)) * (narrow ? 1.3 : 1);
                 const x = (narrow ? width * 0.82 : width * 0.76) - mouseX * 36;
-                const topY = height - 104 * S - mouseY * 10;
+                const V = 1.16;
+                const bodyH = (28 + 156 * V) * S;   // rock top to the crown of his head
+
+                // Anchored to the horizon, not the bottom of the frame. Pinned to the
+                // bottom, the waterline landed on his neck at phone aspect ratios;
+                // this keeps it crossing his flank at every size.
+                let topY = horizonY + bodyH * 0.46 - mouseY * 10;
+                // ...but never low enough to run the reflection off the bottom edge.
+                topY = Math.min(topY, height - 118 * S);
+
                 const y = topY - 2 * S;
                 const breath = reduceMotion ? 0 : Math.sin(t * 0.0022) * 2 * S;
-                const headY = y - 156 * S + breath;
+                const headY = y - 156 * S * V + breath;
 
-                drawIslet(x, topY, S, lightPos, lightCol);
+                drawIslet(x, topY, S, lightPos, lightCol, t);
 
                 // Contact shadow.
                 ctx.fillStyle = 'rgba(0,0,0,0.26)';
@@ -699,20 +822,20 @@
                 // Body.
                 haloOn();
                 ctx.fillStyle = CREAM;
-                lanceBodyPath(x, y, S, breath);
+                lanceBodyPath(x, y, S, breath, V);
                 ctx.fill();
                 haloOff();
 
                 // Apricot back, soft-edged so there is no hard saddle line.
-                const sad = ctx.createLinearGradient(0, y - 140 * S, 0, y - 6 * S);
+                const sad = ctx.createLinearGradient(0, y - 140 * S * V, 0, y - 6 * S);
                 sad.addColorStop(0, rgb(APRICOT, 0.55));
                 sad.addColorStop(0.5, rgb(APRICOT, 0.5));
                 sad.addColorStop(1, rgb(APRICOT, 0.08));
                 ctx.fillStyle = sad;
                 ctx.beginPath();
-                ctx.moveTo(x - 15 * S, y - 130 * S + breath);
-                ctx.bezierCurveTo(x - 28 * S, y - 84 * S, x - 34 * S, y - 30 * S, x, y - 12 * S);
-                ctx.bezierCurveTo(x + 34 * S, y - 30 * S, x + 28 * S, y - 84 * S, x + 15 * S, y - 126 * S + breath);
+                ctx.moveTo(x - 15 * S, y - 130 * S * V + breath);
+                ctx.bezierCurveTo(x - 28 * S, y - 84 * S * V, x - 34 * S, y - 30 * S * V, x, y - 12 * S);
+                ctx.bezierCurveTo(x + 34 * S, y - 30 * S * V, x + 28 * S, y - 84 * S * V, x + 15 * S, y - 126 * S * V + breath);
                 ctx.closePath();
                 ctx.fill();
 
@@ -727,36 +850,55 @@
                 // It sits against dark water anyway, so it needs no help separating.
                 drawTail(x, y, S, t);
 
+                // His back stays to us. He only registers the light: the head leads a
+                // couple of pixels toward it and the tip of the snout clears the cheek on
+                // that side. Rotating him to a real profile was far too much.
+                const turn = Math.max(-1, Math.min(1, (lightPos.x - x) / (width * 0.2)));
+                const side = turn < 0 ? -1 : 1;
+                const peek = Math.abs(turn);
+                const hx = x + turn * 2 * S;
+
+                // A little pitch as the light climbs, capped well short of anything that
+                // would read as him craning upward.
+                const alt = Math.max(0, Math.min(1, (horizonY - lightPos.y) / (horizonY * 0.74)));
+                const psi = alt * 0.35;
+                const theta = Math.atan2(-Math.sin(psi), side * Math.cos(psi));
+
                 // Contact shading under the head. Radial, not an ellipse — a hard-edged
                 // shape here is exactly what made it look like a ring.
-                const hs = ctx.createRadialGradient(x + 2 * S, headY + 19 * S, 2 * S, x + 2 * S, headY + 19 * S, 27 * S);
+                const hs = ctx.createRadialGradient(hx + 2 * S, headY + 19 * S, 2 * S, hx + 2 * S, headY + 19 * S, 27 * S);
                 hs.addColorStop(0, 'rgba(0,0,0,0.08)');
                 hs.addColorStop(1, 'rgba(0,0,0,0)');
                 ctx.fillStyle = hs;
                 ctx.beginPath();
-                ctx.ellipse(x + 2 * S, headY + 19 * S, 27 * S, 16 * S, 0, 0, TAU);
+                ctx.ellipse(hx + 2 * S, headY + 19 * S, 27 * S, 16 * S, 0, 0, TAU);
                 ctx.fill();
 
                 haloOn();
-                drawEar(x, headY, S, -1);
-                drawEar(x, headY, S, 1);
+                drawEar(hx, headY, S, -1);
+                drawEar(hx, headY, S, 1);
                 haloOff();
 
-                // Cheek floof, skull, and a hint of muzzle turned to the right.
+                // Cheek floof, then the skull.
                 ctx.fillStyle = CREAM;
                 ctx.beginPath();
-                ctx.ellipse(x - 16 * S, headY + 9 * S, 11 * S, 10 * S, 0, 0, TAU);
+                ctx.ellipse(hx - 16 * S, headY + 9 * S, 11 * S, 10 * S, 0, 0, TAU);
                 ctx.fill();
                 ctx.beginPath();
-                ctx.ellipse(x + 19 * S, headY + 9 * S, 11 * S, 10 * S, 0, 0, TAU);
+                ctx.ellipse(hx + 19 * S, headY + 9 * S, 11 * S, 10 * S, 0, 0, TAU);
                 ctx.fill();
+
+                // Snout under the skull, not over it. Facing away from us it belongs on
+                // the far side of his head, and drawing it first lets the skull occlude
+                // it for free; in profile it reaches well clear and stays fully visible.
                 haloOn();
-                headPath(x, headY, S);
+                drawMuzzle(hx, headY, S, peek, theta, lightCol);
+                haloOff();
+
+                haloOn();
+                headPath(hx, headY, S);
                 ctx.fill();
                 haloOff();
-                ctx.beginPath();
-                ctx.ellipse(x + 27 * S, headY + 3 * S, 10 * S, 7 * S, 0.18, 0, TAU);
-                ctx.fill();
 
                 // Rim light from whichever body is in the sky. Clipped gradient rather
                 // than a stroke — stroking a closed path also draws its buried edges,
@@ -784,8 +926,10 @@
                     ctx.restore();
                 }
 
-                rimLight(function () { lanceBodyPath(x, y, S, breath); }, x, 58 * S);
-                rimLight(function () { headPath(x, headY, S); }, x + 2 * S, 30 * S);
+                rimLight(function () { lanceBodyPath(x, y, S, breath, V); }, x, 58 * S);
+                rimLight(function () { headPath(hx, headY, S); }, hx + 2 * S, 30 * S);
+                // No eye: from behind him there is nothing for one to sit on, and drawn
+                // on the skull it read as an eye in the back of his head.
             }
 
             // --- MAIN LOOP --------------------------------------------------------
