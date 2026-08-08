@@ -645,8 +645,8 @@
 
                 // Brown at the tip washing out to white at the base.
                 const earGrad = ctx.createLinearGradient(0, tipY, 0, headY - 12 * S);
-                earGrad.addColorStop(0, rgb(APRICOT));
-                earGrad.addColorStop(0.5, rgb(mix(APRICOT, [253, 251, 250], 0.4)));
+                earGrad.addColorStop(0, rgb([196, 146, 92]));
+                earGrad.addColorStop(0.5, rgb(APRICOT));
                 earGrad.addColorStop(1, CREAM);
                 ctx.fillStyle = earGrad;
                 ctx.beginPath();
@@ -669,7 +669,7 @@
                 // for the frame, so give him a boost there.
                 const narrow = width <= 768;
                 const S = Math.max(0.55, Math.min(1.1, Math.min(width, height) / 900)) * (narrow ? 1.3 : 1);
-                const x = (narrow ? width * 0.68 : width * 0.76) - mouseX * 36;
+                const x = (narrow ? width * 0.82 : width * 0.76) - mouseX * 36;
                 const topY = height - 104 * S - mouseY * 10;
                 const y = topY - 2 * S;
                 const breath = reduceMotion ? 0 : Math.sin(t * 0.0022) * 2 * S;
@@ -678,15 +678,30 @@
                 drawIslet(x, topY, S, lightPos, lightCol);
 
                 // Contact shadow.
-                ctx.fillStyle = 'rgba(0,0,0,0.38)';
+                ctx.fillStyle = 'rgba(0,0,0,0.26)';
                 ctx.beginPath();
-                ctx.ellipse(x, y + 8 * S, 62 * S, 12 * S, 0, 0, TAU);
+                ctx.ellipse(x, y + 8 * S, 56 * S, 10 * S, 0, 0, TAU);
                 ctx.fill();
 
+                // A cream dog against a pale daytime sky has almost no edge contrast,
+                // so lay a soft dark halo behind his silhouette. Strongest at midday,
+                // barely there at night when the sky is already dark.
+                const halo = 0.07 + 0.13 * (1 - night);
+                function haloOn() {
+                    ctx.shadowColor = 'rgba(14,9,28,' + halo + ')';
+                    ctx.shadowBlur = 7 * S;
+                }
+                function haloOff() {
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                }
+
                 // Body.
+                haloOn();
                 ctx.fillStyle = CREAM;
                 lanceBodyPath(x, y, S, breath);
                 ctx.fill();
+                haloOff();
 
                 // Apricot back, soft-edged so there is no hard saddle line.
                 const sad = ctx.createLinearGradient(0, y - 140 * S, 0, y - 6 * S);
@@ -707,20 +722,25 @@
                 ctx.ellipse(x + 46 * S, y + 2 * S, 15 * S, 9 * S, -0.12, 0, TAU);
                 ctx.fill();
 
+                // No halo on the tail: it overlaps the body, so its shadow prints onto
+                // him as an outline, and the apricot overlay casts one inside the tail.
+                // It sits against dark water anyway, so it needs no help separating.
                 drawTail(x, y, S, t);
 
                 // Contact shading under the head. Radial, not an ellipse — a hard-edged
                 // shape here is exactly what made it look like a ring.
                 const hs = ctx.createRadialGradient(x + 2 * S, headY + 19 * S, 2 * S, x + 2 * S, headY + 19 * S, 27 * S);
-                hs.addColorStop(0, 'rgba(0,0,0,0.13)');
+                hs.addColorStop(0, 'rgba(0,0,0,0.08)');
                 hs.addColorStop(1, 'rgba(0,0,0,0)');
                 ctx.fillStyle = hs;
                 ctx.beginPath();
                 ctx.ellipse(x + 2 * S, headY + 19 * S, 27 * S, 16 * S, 0, 0, TAU);
                 ctx.fill();
 
+                haloOn();
                 drawEar(x, headY, S, -1);
                 drawEar(x, headY, S, 1);
+                haloOff();
 
                 // Cheek floof, skull, and a hint of muzzle turned to the right.
                 ctx.fillStyle = CREAM;
@@ -730,8 +750,10 @@
                 ctx.beginPath();
                 ctx.ellipse(x + 19 * S, headY + 9 * S, 11 * S, 10 * S, 0, 0, TAU);
                 ctx.fill();
+                haloOn();
                 headPath(x, headY, S);
                 ctx.fill();
+                haloOff();
                 ctx.beginPath();
                 ctx.ellipse(x + 27 * S, headY + 3 * S, 10 * S, 7 * S, 0.18, 0, TAU);
                 ctx.fill();
